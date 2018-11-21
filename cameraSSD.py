@@ -19,30 +19,10 @@ from pyimagesearch.centroidtracker import CentroidTracker
 
 from mvnc import mvncapi as mvnc
 
-#_#from keras import backend as K
-#_#from keras.models import load_model
-
-# The below provided fucntions will be used from yolo_utils.py
-#_#from yolo_utils import read_classes, read_anchors, generate_colors, preprocess_image, preprocess_image_new, draw_boxes
-
-# The below functions from the yad2k library will be used
-#_#from yad2k.models.keras_yolo import yolo_head, yolo_eval
-
-from shapely.geometry import Point
-from shapely.geometry.polygon import Polygon
+#from shapely.geometry import Point
+#from shapely.geometry.polygon import Polygon
 
 dim=(300,300)
-
-
-#_#def onclick(event, x, y, flags, param):
-#_#    #print("onclick !!" +  key + " " + id)
-#_#    global point_x, point_y        
-#_#    if event ==  cv2.EVENT_LBUTTONDOWN: # left button down
-#_#        print("Left click")        
-#_#        point_x = x
-#_#        point_y = y
-#_#        cv2.circle(position_frame, (x, y), 6, (255,0,0), -1)
-#_#        print("point %d, %d" %(x,y))
 
 LABELS = ('background',
           'aeroplane', 'bicycle', 'bird', 'boat',
@@ -53,11 +33,14 @@ LABELS = ('background',
 
 # Run an inference on the passed image
 # image_to_classify is the image on which an inference will be performed
-#    upon successful return this image will be overlayed with boxes
-#    and labels identifying the found objects within the image.
+# upon successful return this image will be overlayed with boxes
+# and labels identifying the found objects within the image.
 # ssd_mobilenet_graph is the Graph object from the NCAPI which will
-#    be used to peform the inference.
+# be used to peform the inference.
 def run_inference(image_to_classify, ssd_mobilenet_graph):
+
+    # the minimal score for a box to be shown
+    min_score_percent = 60
 
     # get a resized version of the image that is the dimensions
     # SSD Mobile net expects
@@ -66,7 +49,7 @@ def run_inference(image_to_classify, ssd_mobilenet_graph):
     # ***************************************************************
     # Send the image to the NCS
     # ***************************************************************
-    ssd_mobilenet_graph.LoadTensor(resized_image.astype(numpy.float16), None)
+    ssd_mobilenet_graph.LoadTensor(resized_image.astype(np.float16), None)
 
     # ***************************************************************
     # Get the result from the NCS
@@ -98,38 +81,54 @@ def run_inference(image_to_classify, ssd_mobilenet_graph):
 
     for box_index in range(num_valid_boxes):
             base_index = 7+ box_index * 7
-            if (not numpy.isfinite(output[base_index]) or
-                    not numpy.isfinite(output[base_index + 1]) or
-                    not numpy.isfinite(output[base_index + 2]) or
-                    not numpy.isfinite(output[base_index + 3]) or
-                    not numpy.isfinite(output[base_index + 4]) or
-                    not numpy.isfinite(output[base_index + 5]) or
-                    not numpy.isfinite(output[base_index + 6]) and
-                    LABELS[int(output[base_index + 1])] in str(accepted)):
+            if (not np.isfinite(output[base_index]) or
+                    not np.isfinite(output[base_index + 1]) or
+                    not np.isfinite(output[base_index + 2]) or
+                    not np.isfinite(output[base_index + 3]) or
+                    not np.isfinite(output[base_index + 4]) or
+                    not np.isfinite(output[base_index + 5]) or
+                    not np.isfinite(output[base_index + 6])):
                 # boxes with non infinite (inf, nan, etc) numbers must be ignored
                 print('box at index: ' + str(box_index) + ' has nonfinite data, ignoring it')
                 continue
+                       
+            # read the score value of the current recognized ID
+            percentage = int(output[base_index + 2] * 100)
+            
+            #verify the type ID is correct and the score is greather the imposed threshold
+            if(LABELS[int(output[base_index + 1])] in str(accepted) and
+            percentage >= min_score_percent):
+                # clip the boxes to the image size incase network returns boxes outside of the image
+                x1 = max(0, int(output[base_index + 3] * image_to_classify.shape[1]))
+                y1 = max(0, int(output[base_index + 4] * image_to_classify.shape[0]))
+                x2 = min(image_to_classify.shape[0], int(output[base_index + 5] * image_to_classify.shape[1]))
+                y2 = min(image_to_classify.shape[1], int(output[base_index + 6] * image_to_classify.shape[0]))
 
-            # clip the boxes to the image size incase network returns boxes outside of the image
-            x1 = max(0, int(output[base_index + 3] * image_to_classify.shape[0]))
-            y1 = max(0, int(output[base_index + 4] * image_to_classify.shape[1]))
-            x2 = min(image_to_classify.shape[0], int(output[base_index + 5] * image_to_classify.shape[0]))
-            y2 = min(image_to_classify.shape[1], int(output[base_index + 6] * image_to_classify.shape[1]))
+                # the position foundin the original frame have to be resized according to the resized image
+                x1 = int(x1/resize_img)
+                y1 = int(y1/resize_img)
+                x2 = int(x2/resize_img)
+                y2 = int(y2/resize_img)    
+                                 
+                # here the the data to reproject (the data we need) are prepared as output of this function
+                detect_object = [x1,y1,x2-x1,y2-y1]
+                person.append(detect_object)  
 
-            x1_ = str(x1)
-            y1_ = str(y1)
-            x2_ = str(x2)
-            y2_ = str(y2)
+                x1_ = str(x1)
+                y1_ = str(y1)
+                x2_ = str(x2)
+                y2_ = str(y2)                
 
-            print('box at index: ' + str(box_index) + ' : ClassID: ' + LABELS[int(output[base_index + 1])] + '  '
-                  'Confidence: ' + str(output[base_index + 2]*100) + '%  ' +
-                  'Top Left: (' + x1_ + ', ' + y1_ + ')  Bottom Right: (' + x2_ + ', ' + y2_ + ')')
+                print('box at index: ' + str(box_index) + ' : ClassID: ' + LABELS[int(output[base_index + 1])] + '  '
+                'Confidence: ' + str(output[base_index + 2]*100) + '%  ' +
+                'Top Left: (' + x1_ + ', ' + y1_ + ')  Bottom Right: (' + x2_ + ', ' + y2_ + ')')
 
-            # overlay boxes and labels on the original image to classify
-            overlay_on_image(image_to_classify, output[base_index:base_index + 7])
+                # overlay boxes and labels on the original image to classify
+                overlay_on_image(image_to_classify, output[base_index:base_index + 7])
+    return person
 
 
-# overlays the boxes and labels onto the display image.
+# overlays the boxes onto the display image.
 # display_image is the image on which to overlay the boxes/labels
 # object_info is a list of 7 values as returned from the network
 #     These 7 values describe the object found and they are:
@@ -143,45 +142,23 @@ def run_inference(image_to_classify, ssd_mobilenet_graph):
 # returns None
 def overlay_on_image(display_image, object_info):
 
-    # the minimal score for a box to be shown
-    min_score_percent = 60
-
     source_image_width = display_image.shape[1]
     source_image_height = display_image.shape[0]
 
     base_index = 0
-    class_id = object_info[base_index + 1]
-    percentage = int(object_info[base_index + 2] * 100)
-    if (percentage <= min_score_percent):
-        # ignore boxes less than the minimum score
-        return
+#    class_id = object_info[base_index + 1]
+#    percentage = int(object_info[base_index + 2] * 100)
+#    label_text = LABELS[int(class_id)] + " (" + str(percentage) + "%)"
+    
+    box_left = int((object_info[base_index + 3] * source_image_width)/1)
+    box_top = int((object_info[base_index + 4] * source_image_height)/1)
+    box_right = int((object_info[base_index + 5] * source_image_width)/1)
+    box_bottom = int((object_info[base_index + 6] * source_image_height)/1)
 
-    label_text = LABELS[int(class_id)] + " (" + str(percentage) + "%)"
-    box_left = int(object_info[base_index + 3] * source_image_width)
-    box_top = int(object_info[base_index + 4] * source_image_height)
-    box_right = int(object_info[base_index + 5] * source_image_width)
-    box_bottom = int(object_info[base_index + 6] * source_image_height)
-
-    box_color = (255, 128, 0)  # box color
-    box_thickness = 4
+    box_color = (255, 255, 0)  # box color
+    box_thickness = 6
     cv2.rectangle(display_image, (box_left, box_top), (box_right, box_bottom), box_color, box_thickness)
 
-    # draw the classification label string just above and to the left of the rectangle
-    label_background_color = (125, 175, 75)
-    label_text_color = (255, 255, 255)  # white text
-
-    label_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-    label_left = box_left
-    label_top = box_top - label_size[1]
-    if (label_top < 1):
-        label_top = 1
-    label_right = label_left + label_size[0]
-    label_bottom = label_top + label_size[1]
-    cv2.rectangle(display_image, (label_left - 1, label_top - 1), (label_right + 1, label_bottom + 1),
-                  label_background_color, -1)
-
-    # label text above the box
-    cv2.putText(display_image, label_text, (label_left, label_bottom), cv2.FONT_HERSHEY_SIMPLEX, 0.5, label_text_color, 1)
 
 
 # create a preprocessed image from the source image that complies to the
@@ -198,28 +175,17 @@ def preprocess_image(src):
     img = img * 0.007843
     return img
 
+
+
 def inside(r, q):
     rx, ry, rw, rh = r
     qx, qy, qw, qh = q
     return rx > qx and ry > qy and rx + rw < qx + qw and ry + rh < qy + qh
 
-def draw_detections(img, rects, thickness = 3):
-    for x, y, w, h in rects:
-        # the HOG detector returns slightly larger rectangles than the real objects.
-        # so we slightly shrink the rectangles to get a nicer output.
-        pad_w, pad_h = int(0.15*w), int(0.05*h)
-        cv2.rectangle(img, (x+pad_w, y+pad_h), (x+w-pad_w, y+h-pad_h), (0, 255, 0), thickness)
-    
-def draw_detections_new(img, rects, thickness = 3):
-    for x, y, w, h in rects:
-        # the HOG detector returns slightly larger rectangles than the real objects.
-        # so we slightly shrink the rectangles to get a nicer output.
-        cv2.rectangle(img, (x, y), (x+w, y+h), (255, 255, 255), thickness) 
     
 def increment_heatmap_value(img, rects, matrix_h, resize_val):
-    for x, y, w, h in rects:
-        pad_w, pad_h = int(0.15*w), int(0.05*h)                
-        point_source = np.array([[(x+pad_w + w/2), (y+h)]], dtype='float32')
+    for x, y, w, h in rects:               
+        point_source = np.array([[(x + w/2), (y+h)]], dtype='float32')
         point_source = np.array([point_source])
         point_dest = cv2.perspectiveTransform(point_source, matrix_h) 
         image_max_y_dimension,image_max_x_dimension,_ = img.shape
@@ -235,15 +201,9 @@ def increment_heatmap_value(img, rects, matrix_h, resize_val):
         
         
 def draw_homography_point(img, rects, matrix_h, thickness = 3):
-    for x, y, w, h in rects:
-        #print(x)
-        #print(y)
-        #print(w)
-        #print(h)        
-        pad_w, pad_h = int(0.15*w), int(0.05*h) 
-        point_source = np.array([[(x+pad_w + w/2), (y+h)]], dtype='float32')
+    for x, y, w, h in rects:      
+        point_source = np.array([[(x+ w/2), (y+h)]], dtype='float32')
         point_source = np.array([point_source])
-        #print(point_source)
         point_dest = cv2.perspectiveTransform(point_source, matrix_h) 
         image_max_y_dimension,image_max_x_dimension,_ = img.shape
         new_x = max(0,point_dest[0][0][0])
@@ -251,19 +211,12 @@ def draw_homography_point(img, rects, matrix_h, thickness = 3):
         new_y = max(0,point_dest[0][0][1])
         new_y = min(image_max_y_dimension,point_dest[0][0][1]) 
         cv2.circle(img, (new_x, new_y), 3, (0,0,255), -1 )  
-        #print(new_x)
-        #print(new_y)
+
         
         
 def convert_homography_point(x, y, w, h, matrix_h):
-    #print(x)
-    #print(y)
-    #print(w)
-    #print(h)   
-    pad_w, pad_h = int(0.15*w), int(0.05*h) 
-    point_source = np.array([[(x+pad_w + w/2), (y+h)]], dtype='float32')
+    point_source = np.array([[(x + w/2), (y+h)]], dtype='float32')
     point_source = np.array([point_source])
-    #print(point_source)
     point_dest = cv2.perspectiveTransform(point_source, matrix_h) 
     return point_dest[0][0][0], point_dest[0][0][1]         
 
@@ -367,12 +320,12 @@ if __name__ == '__main__':
     # Create a sequence of points to make a contour of a valid detection region. This for the problem of point detected in region
     # where is not possible that peaple ore detected (outside a valid region)
     #################################################### 
-    valid_polygon = [None]*4
-    valid_polygon[0] = (1007, 1388)
-    valid_polygon[1] = (1007, 720)
-    valid_polygon[2] = (1487, 720)
-    valid_polygon[3] = (1487, 1390)
-    polygon = Polygon([valid_polygon[0], valid_polygon[1], valid_polygon[2], valid_polygon[3]])
+#    valid_polygon = [None]*4
+#    valid_polygon[0] = (1007, 1388)
+#    valid_polygon[1] = (1007, 720)
+#    valid_polygon[2] = (1487, 720)
+#    valid_polygon[3] = (1487, 1390)
+#    polygon = Polygon([valid_polygon[0], valid_polygon[1], valid_polygon[2], valid_polygon[3]])
 
     ####################################################  
     # connect to rabbitmq
@@ -411,23 +364,7 @@ if __name__ == '__main__':
     width = np.array(width, dtype=float)
     height = np.array(height, dtype=float)
     #Assign the shape of the input image to image_shape variable
-    image_shape = (height,width)
-
-#_#    #Loading the classes and the anchor boxes that are provided in the madel_data folder
-#_#    class_names = read_classes("model_data/coco_classes.txt")
-#_#    anchors = read_anchors("model_data/yolo_anchors.txt")
-#_#    #Load the pretrained model. Please refer the README file to get info on how to obtain the yolo.h5 file
-#_#    yolo_model = load_model("model_data/yolov2.h5")
-#_#    #Print the summery of the model
-#_#    yolo_model.summary()
-#_#    #Convert final layer features to bounding box parameters
-#_#    yolo_outputs = yolo_head(yolo_model.output, anchors, len(class_names))
-#_#    #Now yolo_eval function selects the best boxes using filtering and non-max suppression techniques.
-#_#    #If you want to dive in more to see how this works, refer keras_yolo.py file in yad2k/models
-#_#    boxes, scores, classes = yolo_eval(yolo_outputs, image_shape)    
-#_#    # Initiate a session
-#_#    sess = K.get_session()    
-    
+    image_shape = (height,width)    
     
     ####################################################
     # Get a list of ALL the sticks that are plugged in we need at least one
@@ -468,44 +405,28 @@ if __name__ == '__main__':
         ####################################################
         # read a frame from the camera
         ####################################################
+        print("")
+        print("******************** READ NEW FRAME ********************")
         _,frame_camera = cap.read()
         
         a = datetime.datetime.now()
+        
+        ## resize the original image
+        #frame = cv2.resize(frame_camera, (0,0), fx=1.0/resize_img, fy=1.0/resize_img) x
 
         # run a single inference on the image
-        run_inference(frame_camera, graph)        
+        detected_box = run_inference(frame_camera, graph) 
+        print("detected_box ", detected_box)
+        
+        # resize the original image
+        frame = cv2.resize(frame_camera, (0,0), fx=1.0/resize_img, fy=1.0/resize_img) 
         
         b = datetime.datetime.now()
-        print("Elaboration time: ",b-a)     
-                 
-########################################## 
-        
-        arrivati qui !!!!
+        print("Elaboration time: ",b-a)                            
     
-        out_boxes_tmp2 = []
-        out_boxes_tmp1 = np.int_(out_boxes)        
-        #print("out_boxes_tmp1")
-        #print(out_boxes_tmp1)
-        for i, detect_object in enumerate(out_boxes_tmp1):
-            if(class_names[out_classes[i]]=="person"): 
-                tmp = detect_object[1]  #mettere w ed h
-                detect_object[1] = detect_object[0]
-                detect_object[0] = tmp
-                
-                tmp = detect_object[2]
-                detect_object[2] = detect_object[3] - detect_object[0]
-                detect_object[3] = tmp - detect_object[1]           
-                out_boxes_tmp2.append(detect_object/resize_img)      
-        np.asarray(out_boxes_tmp2)
-        out_boxes_new = np.int_(out_boxes_tmp2)                       
-
-##########################################          
+        draw_homography_point(img_map, detected_box, h)
         
-        #draw_detections(frame,out_boxes_new) # draw bounding box in one image
-        draw_detections_new(frame, out_boxes_new) # draw bounding box in one image
-        draw_homography_point(img_map, out_boxes_new, h)
-        
-        increment_heatmap_value(heatmap_gray, out_boxes_new, h, cell_heatmap_step) # increment vale for the heatmap in the gray image       
+        increment_heatmap_value(heatmap_gray, detected_box, h, cell_heatmap_step) # increment vale for the heatmap in the gray image       
         heatmap_gray = rescale_heatmap_image_value(heatmap_gray)        
         heatmap_color = cv2.applyColorMap(heatmap_gray, cv2.COLORMAP_JET)
         heatmap_color_resize_big = cv2.resize(heatmap_color, (0,0), fx=zoom_heatmap, fy=zoom_heatmap)
@@ -515,7 +436,7 @@ if __name__ == '__main__':
         rects_homography_and_lat_lon = []
         
         #convert data in geographic position and provide the data to rabbitmq
-        for x, y, dim_w, dim_h  in out_boxes_new:             
+        for x, y, dim_w, dim_h  in detected_box:             
             homographyX_in_pixel, homographyY_in_pixel = convert_homography_point(x, y, dim_w, dim_h, h)          
             box_h = [int(homographyX_in_pixel), int(homographyY_in_pixel), int(dim_w), int(dim_h)]
             homographyY_in_pixel = image_map_max_Y - homographyY_in_pixel
@@ -537,7 +458,7 @@ if __name__ == '__main__':
         for (objectID, centroid) in objects.items():
             # draw both the ID of the object and the centroid of the
             # object on the output frame
-            text = "ID {}".format(objectID)
+            text = "ID {} - {} {}".format(objectID, centroid[1], centroid[0])
             print(text)
             # insert data in queue in rabbitmq 
             
@@ -548,14 +469,12 @@ if __name__ == '__main__':
             
             #body = '{"name":"' + str(objectID) + '","timestamp":"2018-10-19T12:46:50.985+0200","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"1.0-SNAPSHOT"}}'            
             body = '{"name":"' + str(objectID) + '","timestamp":"' + timestamp + '","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"cameraYOLO"}}'            
-            print(centroid[1], centroid[0])
             #print(body)
             channel.basic_publish(exchange='trilogis_exchange_pos',routing_key='trilogis_position',body=body, properties=pika.BasicProperties(delivery_mode = 2)) # make message persistent
-            
+    
             
         cv2.imshow('feed',frame)  
-        cv2.imshow('heatmap',heatmap_color_resize_big) 
-        #cv2.imshow('homography',img_map)           
+        cv2.imshow('heatmap',heatmap_color_resize_big)          
         img_map_view = cv2.resize(img_map, (int(cols_map_frame/4), int(rows_map_frame/4)))
         cv2.imshow('homography',img_map_view)
         ch = 0xFF & cv2.waitKey(1)
