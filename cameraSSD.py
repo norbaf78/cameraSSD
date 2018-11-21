@@ -176,7 +176,6 @@ def preprocess_image(src):
     return img
 
 
-
 def inside(r, q):
     rx, ry, rw, rh = r
     qx, qy, qw, qh = q
@@ -402,6 +401,7 @@ if __name__ == '__main__':
 
     
     while True:
+        global_time_start = datetime.datetime.now()
         ####################################################
         # read a frame from the camera
         ####################################################
@@ -411,9 +411,6 @@ if __name__ == '__main__':
         
         a = datetime.datetime.now()
         
-        ## resize the original image
-        #frame = cv2.resize(frame_camera, (0,0), fx=1.0/resize_img, fy=1.0/resize_img) x
-
         # run a single inference on the image
         detected_box = run_inference(frame_camera, graph) 
         print("detected_box ", detected_box)
@@ -422,7 +419,7 @@ if __name__ == '__main__':
         frame = cv2.resize(frame_camera, (0,0), fx=1.0/resize_img, fy=1.0/resize_img) 
         
         b = datetime.datetime.now()
-        print("Elaboration time: ",b-a)                            
+        print("SSD on Movidius time: ",b-a)                            
     
         draw_homography_point(img_map, detected_box, h)
         
@@ -472,7 +469,11 @@ if __name__ == '__main__':
             #print(body)
             channel.basic_publish(exchange='trilogis_exchange_pos',routing_key='trilogis_position',body=body, properties=pika.BasicProperties(delivery_mode = 2)) # make message persistent
     
-            
+           
+        global_time_end = datetime.datetime.now()
+        seconds= (global_time_end-global_time_start).total_seconds()
+        print("FPS: ",  1/seconds)               
+           
         cv2.imshow('feed',frame)  
         cv2.imshow('heatmap',heatmap_color_resize_big)          
         img_map_view = cv2.resize(img_map, (int(cols_map_frame/4), int(rows_map_frame/4)))
