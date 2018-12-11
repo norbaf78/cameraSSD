@@ -234,7 +234,7 @@ if __name__ == '__main__':
     #################################################### 
     # parameters used for the imahe resize
     #################################################### 
-    resize_img = 3 #1.2 # the resize to the acquired image. The HOG will be evaluated on the resized image
+    resize_img = 3 # the resize to the acquired image. The HOG will be evaluated on the resized image
     additional_resize_point = 1.5 # the point in the image (source point for the homography) have been taken with resize_img=2. In case of
                                 # other resize change this vale (example 2,1 4,2 .....)
     cell_heatmap_step = 20
@@ -326,7 +326,6 @@ if __name__ == '__main__':
     valid_polygon[2] = (1487, 720)
     valid_polygon[3] = (1487, 1390)
     polygon = Polygon([valid_polygon[0], valid_polygon[1], valid_polygon[2], valid_polygon[3]])
-    
 
     ####################################################  
     # connect to rabbitmq
@@ -359,10 +358,7 @@ if __name__ == '__main__':
     # get the dinonsion of the camera frame
     #################################################### 
     cap=cv2.VideoCapture("http://root:progtrl01@192.168.208.200/mjpg/1/video.mjpg")
-    #cap=cv2.VideoCapture("http://192.168.208.202/image.mjpg")
     #cap=cv2.VideoCapture("http://admin:admin@192.168.208.200/jpg/image.jpg?size=3")
-    
-    #cap=cv2.VideoCapture("rtsp://root:progtrl01@192.168.208.200/axis-media/media.amp")
     _,input_image=cap.read() # acquire a new image
     height, width, _ = input_image.shape 
     width = np.array(width, dtype=float)
@@ -412,22 +408,20 @@ if __name__ == '__main__':
         ####################################################
         print("")
         print("******************** NEW FRAME ********************")
+        _,frame_camera = cap.read()
         
         a = datetime.datetime.now()
-        _,frame_camera = cap.read()
-        b = datetime.datetime.now()
-        print("Acquisition time: ",b-a)
         
-        a = datetime.datetime.now()        
         # run a single inference on the image
         detected_box = run_inference(frame_camera, graph) 
-        b = datetime.datetime.now()
-        print("SSD on Movidius time: ",b-a)  
-        print("detected_box ", detected_box) 
+        print("detected_box ", detected_box)
         
         # resize the original image
         frame = cv2.resize(frame_camera, (0,0), fx=1.0/resize_img, fy=1.0/resize_img) 
-                                      
+        
+        b = datetime.datetime.now()
+        print("SSD on Movidius time: ",b-a)                            
+    
         draw_homography_point(img_map, detected_box, h)
         
         increment_heatmap_value(heatmap_gray, detected_box, h, cell_heatmap_step) # increment vale for the heatmap in the gray image       
@@ -446,13 +440,14 @@ if __name__ == '__main__':
             homographyY_in_pixel = image_map_max_Y - homographyY_in_pixel
             rects_homography.append(box_h)
             
-            point_inside = polygon.contains(Point(homographyX_in_pixel,image_map_max_Y - homographyY_in_pixel))
-            if(point_inside==True):           
-                metersX,metersY = transformer.pixelToMeter(homographyX_in_pixel,homographyY_in_pixel,image_map_max_X,image_map_max_Y)  
-                newx,newy = transformer.transform(metersX,metersY)       
-                newy,newx = reprojecter.MetersToLatLon(newx,newy)  
-                box_lat_lon = [newy, newx]           
-                rects_lat_lon.append(box_lat_lon)
+            #point_inside = polygon.contains(Point(homographyX_in_pixel,image_map_max_Y - homographyY_in_pixel))
+            #if(point_inside==True):
+            
+            metersX,metersY = transformer.pixelToMeter(homographyX_in_pixel,homographyY_in_pixel,image_map_max_X,image_map_max_Y)  
+            newx,newy = transformer.transform(metersX,metersY)       
+            newy,newx = reprojecter.MetersToLatLon(newx,newy)  
+            box_lat_lon = [newy, newx]           
+            rects_lat_lon.append(box_lat_lon)
                             
         objects = ct.update2(rects_lat_lon)             
                
@@ -467,11 +462,10 @@ if __name__ == '__main__':
             ts = time.time()
             st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
             timezone =time.strftime("%z")
-            timestamp = st+timezone  
-            idAnonymous = "anonymous_" + str(objectID)
+            timestamp = st+timezone            
             
             #body = '{"name":"' + str(objectID) + '","timestamp":"2018-10-19T12:46:50.985+0200","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"1.0-SNAPSHOT"}}'            
-            body = '{"name":"' + idAnonymous + '","timestamp":"' + timestamp + '","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"cameraYOLO"}}'            
+            body = '{"name":"' + str(objectID) + '","timestamp":"' + timestamp + '","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"cameraYOLO"}}'            
             #print(body)
             channel.basic_publish(exchange='trilogis_exchange_pos',routing_key='trilogis_position',body=body, properties=pika.BasicProperties(delivery_mode = 2)) # make message persistent
     
