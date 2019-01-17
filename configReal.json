@@ -56,6 +56,7 @@
 		"pt_4_pix_src_image_X": 711,
 		"pt_4_pix_src_image_Y": 485,
 		"pt_4_pix_dst_image_X": 1427,
-		"pt_4_pix_dst_image_Y": 1143
+		"pt_4_pix_dst_image_Y": 1143,
+           "write_on_bus_every_X_frames": 10
     }
 }

@@ -283,6 +283,8 @@ if __name__ == '__main__':
     #image information
     image_map_max_X = float(data['config']['backgound_image_max_X'])
     image_map_max_Y = float(data['config']['backgound_image_max_Y'])
+    #update position to send on the bus every X frames
+    write_on_bus_every_X_frames = float(data['config']['write_on_bus_every_X_frames'])
 
     #################################################### 
     # print the vales read into the configuration file
@@ -403,7 +405,12 @@ if __name__ == '__main__':
     # create the NCAPI graph instance from the memory buffer containing the graph file.
     ####################################################
     graph = device.AllocateGraph(graph_in_memory)    
-
+    
+    ####################################################
+    # initiaize to zero the frame counter to enble the sending of the position only one time 
+    # every "write_on_bus_every_X_frames" frames
+    ####################################################
+    counter_frame_for_send_on_channel = 0
     
     while True:
         global_time_start = datetime.datetime.now()
@@ -412,6 +419,10 @@ if __name__ == '__main__':
         ####################################################
         print("")
         print("******************** NEW FRAME ********************")
+        if counter_frame_for_send_on_channel == write_on_bus_every_X_frames:
+            counter_frame_for_send_on_channel=0
+        else:
+            counter_frame_for_send_on_channel = counter_frame_for_send_on_channel+1
         
         a = datetime.datetime.now()
         _,frame_camera = cap.read()
@@ -472,8 +483,10 @@ if __name__ == '__main__':
             
             #body = '{"name":"' + str(objectID) + '","timestamp":"2018-10-19T12:46:50.985+0200","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"1.0-SNAPSHOT"}}'            
             body = '{"name":"' + idAnonymous + '","timestamp":"' + timestamp + '","geometry":{"type":"Point","coordinates":[' + str(centroid[1]) + ',' + str(centroid[0]) + ']},"accuracy":0.8, "source":{"type":"Manual","name":"PythonClientCameraRD"},"extra":{"Tile38Key":"' + key + '","SoftwareVersion":"cameraYOLO"}}'            
-            #print(body)
-            channel.basic_publish(exchange='trilogis_exchange_pos',routing_key='trilogis_position',body=body, properties=pika.BasicProperties(delivery_mode = 2)) # make message persistent
+            if(counter_frame_for_send_on_channel == write_on_bus_every_X_frames):
+                print("PUBLISH")
+                print(body)
+                channel.basic_publish(exchange='trilogis_exchange_pos',routing_key='trilogis_position',body=body, properties=pika.BasicProperties(delivery_mode = 2)) # make message persistent
     
            
         global_time_end = datetime.datetime.now()
